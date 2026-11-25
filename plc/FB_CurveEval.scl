@@ -1,0 +1,239 @@
+FUNCTION_BLOCK "FB_CurveEval"
+TITLE = Force-travel curve evaluation on sampled data, one sample per call
+{ S7_Optimized_Access := 'TRUE' }
+AUTHOR : chad416
+VERSION : 0.1
+//  Called in the cyclic interrupt that samples the load cell and the axis position.
+//  Nothing is stored as a curve: every evaluation element is updated with the new sample.
+//  Elements (DOSSIER section 6.3):
+//    gate 1 (GateX)    pull force FpG1 and return force FrG1 at the same travel;
+//                      FMean = (FpG1 + FrG1) / 2 is the spring, FHyst = FpG1 - FrG1 is twice the friction
+//    gate 2 (Gate2X)   pull force after the cable is taut
+//    peak window       highest pull force between PeakXLo and PeakXHi and its travel (latch release)
+//    step              force drop within StepSpan after the peak
+//    stop              travel at which the pull force crosses StopF (end stop)
+//    envelope          pull force at fixed travel nodes against EnvLo / EnvHi
+//  Mode: 1 peak force only, 2 pull-stroke windows, 3 windows with return stroke, 4 envelope.
+//  NokCode: 0 OK, 1 element not measured, 2 gate-1 force (spring), 3 hysteresis (friction),
+//           4 no return force, 5 gate-2 force, 6 peak force, 7 peak travel, 8 release step,
+//           9 stop travel, 10 envelope.
+   VAR_INPUT
+      Reset : Bool;   // clear all results, before a new pull
+      Sample : Bool;   // X and F are a new sample
+      Stroke : Int;   // 1 pull, 2 return
+      X : Real;   // mm, travel from touch
+      F : Real;   // N
+      Finish : Bool;   // return stroke finished: judge
+      Mode : Int := 3;
+      GateX : Real := 3.0;   // mm
+      Gate2X : Real := 10.0;   // mm
+      PeakXLo : Real := 13.0;   // mm
+      PeakXHi : Real := 26.0;   // mm
+      StepSpan : Real := 2.0;   // mm
+      StopF : Real := 30.0;   // N
+      G1Lo : Real;   // N, limits of FpG1 (mode 2)
+      G1Hi : Real;
+      MeanLo : Real;   // N, limits of FMean (mode 3)
+      MeanHi : Real;
+      HystLo : Real;   // N, limits of FHyst (mode 3)
+      HystHi : Real;
+      RetFMin : Real;   // N, FrG1 must be above (mode 3)
+      G2Lo : Real;   // N, limits of FpG2
+      G2Hi : Real;
+      PeakFLo : Real;   // N
+      PeakFHi : Real;
+      PeakXMin : Real;   // mm, limits of XPeak
+      PeakXMax : Real;
+      StepLo : Real;   // N
+      StopXLo : Real;   // mm
+      StopXHi : Real;
+      EnvX0 : Real := 1.0;   // mm, first envelope node
+      EnvDx : Real := 0.5;   // mm, node spacing
+      EnvN : Int := 55;   // number of nodes, at most 64
+      EnvLo : Array[0..63] of Real;   // N
+      EnvHi : Array[0..63] of Real;   // N
+   END_VAR
+
+   VAR_OUTPUT
+      FpG1 : Real;
+      FrG1 : Real;
+      FMean : Real;
+      FHyst : Real;
+      FpG2 : Real;
+      FPeak : Real;
+      XPeak : Real;
+      FStep : Real;
+      XStop : Real;
+      EnvViol : Int;   // envelope nodes outside the band
+      EnvNodes : Int;   // envelope nodes evaluated
+      NSamples : Int;
+      Done : Bool;
+      Ok : Bool;
+      NokCode : Int;
+   END_VAR
+
+   VAR
+      sHavePrev : Bool;
+      sPrevX : Real;
+      sPrevF : Real;
+      sPrevStroke : Int;
+      sGotG1 : Bool;
+      sGotG2 : Bool;
+      sGotR1 : Bool;
+      sGotPeak : Bool;
+      sGotStop : Bool;
+      sFMin : Real;
+   END_VAR
+
+   VAR_TEMP
+      tI : Int;
+      tNodeX : Real;
+      tFn : Real;
+      tCode : Int;
+   END_VAR
+
+BEGIN
+	REGION Reset
+	    IF #Reset THEN
+	        #FpG1 := 0.0;
+	        #FrG1 := 0.0;
+	        #FMean := 0.0;
+	        #FHyst := 0.0;
+	        #FpG2 := 0.0;
+	        #FPeak := 0.0;
+	        #XPeak := 0.0;
+	        #FStep := 0.0;
+	        #XStop := 0.0;
+	        #EnvViol := 0;
+	        #EnvNodes := 0;
+	        #NSamples := 0;
+	        #Done := FALSE;
+	        #Ok := FALSE;
+	        #NokCode := 0;
+	        #sHavePrev := FALSE;
+	        #sGotG1 := FALSE;
+	        #sGotG2 := FALSE;
+	        #sGotR1 := FALSE;
+	        #sGotPeak := FALSE;
+	        #sGotStop := FALSE;
+	        #sFMin := 0.0;
+	        RETURN;
+	    END_IF;
+	END_REGION
+
+	REGION PullStroke
+	    IF #Sample AND NOT #Done AND #Stroke = 1 THEN
+	        IF #sHavePrev AND #sPrevStroke = 1 THEN
+	            // gates: force at a set travel, linear between the two samples around it
+	            IF NOT #sGotG1 AND #sPrevX < #GateX AND #X >= #GateX THEN
+	                #FpG1 := #sPrevF + (#F - #sPrevF) * (#GateX - #sPrevX) / (#X - #sPrevX);
+	                #sGotG1 := TRUE;
+	            END_IF;
+	            IF NOT #sGotG2 AND #sPrevX < #Gate2X AND #X >= #Gate2X THEN
+	                #FpG2 := #sPrevF + (#F - #sPrevF) * (#Gate2X - #sPrevX) / (#X - #sPrevX);
+	                #sGotG2 := TRUE;
+	            END_IF;
+	            // end stop: travel at a set force
+	            IF NOT #sGotStop AND #sPrevX > #Gate2X AND #sPrevF < #StopF AND #F >= #StopF THEN
+	                #XStop := #sPrevX + (#X - #sPrevX) * (#StopF - #sPrevF) / (#F - #sPrevF);
+	                #sGotStop := TRUE;
+	            END_IF;
+	            // envelope: at most four nodes can lie between two samples
+	            FOR #tI := 1 TO 4 DO
+	                #tNodeX := #EnvX0 + #EnvDx * INT_TO_REAL(#EnvNodes);
+	                IF #EnvNodes < #EnvN AND #sPrevX < #tNodeX AND #X >= #tNodeX THEN
+	                    #tFn := #sPrevF + (#F - #sPrevF) * (#tNodeX - #sPrevX) / (#X - #sPrevX);
+	                    IF #tFn < #EnvLo[#EnvNodes] OR #tFn > #EnvHi[#EnvNodes] THEN
+	                        #EnvViol := #EnvViol + 1;
+	                    END_IF;
+	                    #EnvNodes := #EnvNodes + 1;
+	                END_IF;
+	            END_FOR;
+	        END_IF;
+	        // latch release: peak inside the window, then the drop after it
+	        IF #X >= #PeakXLo AND #X <= #PeakXHi AND (NOT #sGotPeak OR #F > #FPeak) THEN
+	            #FPeak := #F;
+	            #XPeak := #X;
+	            #sFMin := #F;
+	            #sGotPeak := TRUE;
+	        ELSIF #sGotPeak AND #X <= #XPeak + #StepSpan AND #F < #sFMin THEN
+	            #sFMin := #F;
+	        END_IF;
+	        IF #sGotPeak THEN
+	            #FStep := #FPeak - #sFMin;
+	        END_IF;
+	    END_IF;
+	END_REGION
+
+	REGION ReturnStroke
+	    IF #Sample AND NOT #Done AND #Stroke = 2 AND #sHavePrev THEN
+	        IF NOT #sGotR1 AND #sPrevX > #GateX AND #X <= #GateX THEN
+	            #FrG1 := #sPrevF + (#F - #sPrevF) * (#GateX - #sPrevX) / (#X - #sPrevX);
+	            #sGotR1 := TRUE;
+	        END_IF;
+	    END_IF;
+	END_REGION
+
+	REGION Bookkeeping
+	    IF #Sample AND NOT #Done THEN
+	        #sPrevX := #X;
+	        #sPrevF := #F;
+	        #sPrevStroke := #Stroke;
+	        #sHavePrev := TRUE;
+	        IF #NSamples < 32000 THEN
+	            #NSamples := #NSamples + 1;
+	        END_IF;
+	    END_IF;
+	END_REGION
+
+	REGION Verdict
+	    IF #Finish AND NOT #Done THEN
+	        #FMean := (#FpG1 + #FrG1) * 0.5;
+	        #FHyst := #FpG1 - #FrG1;
+	        #tCode := 0;
+	        CASE #Mode OF
+	            1:  // peak force only
+	                IF NOT #sGotPeak THEN
+	                    #tCode := 1;
+	                ELSIF #FPeak < #PeakFLo OR #FPeak > #PeakFHi THEN
+	                    #tCode := 6;
+	                END_IF;
+	            2, 3:  // windows; mode 3 judges gate 1 with the return stroke
+	                IF NOT (#sGotG1 AND #sGotG2 AND #sGotPeak AND #sGotStop) THEN
+	                    #tCode := 1;
+	                ELSIF #Mode = 3 AND NOT #sGotR1 THEN
+	                    #tCode := 1;
+	                ELSIF #Mode = 2 AND (#FpG1 < #G1Lo OR #FpG1 > #G1Hi) THEN
+	                    #tCode := 2;
+	                ELSIF #Mode = 3 AND (#FMean < #MeanLo OR #FMean > #MeanHi) THEN
+	                    #tCode := 2;
+	                ELSIF #Mode = 3 AND (#FHyst < #HystLo OR #FHyst > #HystHi) THEN
+	                    #tCode := 3;
+	                ELSIF #Mode = 3 AND #FrG1 < #RetFMin THEN
+	                    #tCode := 4;
+	                ELSIF #FpG2 < #G2Lo OR #FpG2 > #G2Hi THEN
+	                    #tCode := 5;
+	                ELSIF #FPeak < #PeakFLo OR #FPeak > #PeakFHi THEN
+	                    #tCode := 6;
+	                ELSIF #XPeak < #PeakXMin OR #XPeak > #PeakXMax THEN
+	                    #tCode := 7;
+	                ELSIF #FStep < #StepLo THEN
+	                    #tCode := 8;
+	                ELSIF #XStop < #StopXLo OR #XStop > #StopXHi THEN
+	                    #tCode := 9;
+	                END_IF;
+	            4:  // envelope: every node reached and inside
+	                IF #EnvNodes < #EnvN THEN
+	                    #tCode := 1;
+	                ELSIF #EnvViol > 0 THEN
+	                    #tCode := 10;
+	                END_IF;
+	            ELSE
+	                #tCode := 1;
+	        END_CASE;
+	        #NokCode := #tCode;
+	        #Ok := #tCode = 0;
+	        #Done := TRUE;
+	    END_IF;
+	END_REGION
+END_FUNCTION_BLOCK

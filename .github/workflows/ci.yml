@@ -1,0 +1,49 @@
+name: ci
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Tests (published example, closed forms, SCL against NumPy, station sequence, line model)
+        run: python -m pytest -q
+      - name: SCL sources translate (the TIA Portal compile itself needs Windows and TIA Portal)
+        run: python -c "import glob; from handletest import scl; print(list(scl.load(sorted(glob.glob('plc/FB_*.scl')))))"
+      - name: Study, reduced size, and checks on its output
+        run: |
+          python scripts/run_all.py --quick
+          python - <<'PY'
+          import json
+          s = json.load(open("results/summary_quick.json"))
+          r = s["regulation"]
+          assert abs(r["figure_4_1"]["net_kgf_m"] - 0.0347) < 1e-4
+          assert r["g_held_wrong_variant"] < 30 < r["g_held_nominal"]
+          for m, d in s["false_reject"].items():
+              assert d["rate"] < 0.01, (m, d)
+          det = s["detection"]
+          assert det["particle_at_stop"]["peak"] < 0.05
+          assert det["weak_spring"]["pullret"] > 0.98 > det["weak_spring"]["peak"]
+          assert s["masked_weak_spring"]["pullret"] > 0.95 and s["masked_weak_spring"]["pull"] < 0.5
+          p = s["plc_loop"]
+          assert p["replay"]["agree"] == p["replay"]["of"] and p["replay"]["feature_max_abs_diff"] < 1e-3
+          assert all(v == 0 for v in p["rejected_of_n"]["good"].values())
+          t1 = s["type1"]
+          assert all(d["Cgk"] >= 1.33 for d in t1["compensated"].values())
+          assert t1["not_compensated"]["XStop"]["Cgk"] < 1.33
+          for w in s["week"].values():
+              assert abs(w["oee"] - w["availability"] * w["effectiveness"] * w["quality"]) < 1e-3
+          print("quick study checks passed")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results-quick
+          path: results/summary_quick.json
