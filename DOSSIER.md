@@ -169,7 +169,7 @@ Chosen: windows + return stroke. It is the only method that meets R-01 in the ma
 ### 7.2 PLC in the loop
 `FB_CurveEval` against the NumPy evaluation on the same samples: 640 of 640 verdicts equal, largest element difference 9.5e-07. Whole station against the plant, 20 parts per group and method: no good part rejected; reject codes of the chosen method per defect are in `results/summary.json` (`plc_loop.nok_codes_pullret`).
 
-Test bench inside the PLC (`plc/test/`, `docs/PLCSIM_RUN.md`): 14 replay cases and 6 station cases with expected values from the NumPy evaluation, in a data block; a bench block compares and writes `DB_TestResult`. Through the translator: 20 of 20 cases pass. TIA Portal V18, whole test project: `COMPILE Success errors=0 warnings=0`. Not yet run in S7-PLCSIM.
+Test bench inside the PLC (`plc/test/`, `docs/PLCSIM_RUN.md`): 14 replay cases and 6 station cases with expected values from the NumPy evaluation, in a data block; a bench block compares and writes `DB_TestResult`. Through the translator: 20 of 20 cases pass. TIA Portal V18, whole test project: `COMPILE Success errors=0 warnings=0`. Run in S7-PLCSIM Advanced V7.0 Upd1 under TIA Portal V20 Update 7 on 25 November 2026, after V20 had upgraded the project from V18: 20 of 20 cases passed, `BenchCalls` 102, `MaxFeatError` 7.629395E-06. Record and screenshots: `docs/PLCSIM_RUN.md`. This is a simulated CPU, not a real PLC.
 
 ### 7.3 Sensitivity: what moves the false rejects
 
@@ -219,7 +219,7 @@ Assumed: all masses, spring data, friction, latch load, tolerances and their dis
 | R-07 | Speed table | 54 N at 50 mm/s: met with little margin |
 | R-08 | Section 5.4 | 4.24 s of 12 s |
 
-Validation against a real handle and a real rig has not been done. First steps with hardware: measure friction and spring torque of 50 units, run the Type-1 study on the real rig, run the prepared test project in S7-PLCSIM (`docs/PLCSIM_RUN.md`), then load the SCL (it compiles in TIA Portal V18 with 0 errors and 0 warnings) on a CPU and check the cycle load of the 2 ms interrupt.
+Validation against a real handle and a real rig has not been done. First steps with hardware: measure friction and spring torque of 50 units, run the Type-1 study on the real rig, then load the SCL on a real CPU and check the cycle load of the 2 ms interrupt. Done before that, without hardware: the SCL compiles in TIA Portal V18 with 0 errors and 0 warnings, and the test project passed 20 of 20 cases in S7-PLCSIM Advanced (`docs/PLCSIM_RUN.md`).
 
 ## 11. Limits of this work
 

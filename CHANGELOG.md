@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.1 (2026-11-25)
+- Test project run in S7-PLCSIM Advanced V7.0 Upd1 under TIA Portal V20 Update 7 (project upgraded from V18; two CPU protection settings set by hand so that the hardware compiles): 20 of 20 cases passed, BenchCalls 102, MaxFeatError 7.629395E-06. Record, observed values and screenshots in docs/PLCSIM_RUN.md; README and dossier say what was run. No source changed.
+
 ## 1.1.0 (2026-11-25)
 - Test bench that runs inside the PLC (plc/test): recorded curves and expected values in a generated data block, plant stand-in, bench block, result data block, OB1. 20 cases.
 - Translator: global and instance data blocks, organization blocks, access to instance inputs and nested instances. The bench runs in pytest and in CI.
