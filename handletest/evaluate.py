@@ -172,3 +172,44 @@ def calibrate_k(mode: int, feat: dict, st: dict, fixed: dict, target: float) -> 
         fr = 1.0 - judge(feat, limits_for(mode, st, mid, fixed)).mean()
         lo, hi = (mid, hi) if fr > target else (lo, mid)
     return hi
+
+
+def nok_code(feat: dict, lim: dict, mode: int, i: int, nodes_f: np.ndarray | None = None,
+             env: tuple | None = None, env_n: int | None = None) -> int:
+    """NOK code of part i in the order FB_CurveEval checks (0 = OK). Mode 4 needs nodes_f and env."""
+    def out(name: str) -> bool:
+        lo, hi = lim[name]
+        return not (lo <= feat[name][i] <= hi)
+
+    def missing(*names: str) -> bool:
+        return any(not np.isfinite(feat[n][i]) for n in names)
+
+    if mode == 1:
+        return 1 if missing("FPeak") else (6 if out("FPeak") else 0)
+    if mode in (2, 3):
+        if missing("FpG1", "FpG2", "FPeak", "XStop") or (mode == 3 and missing("FrG1")):
+            return 1
+        if mode == 2 and out("FpG1"):
+            return 2
+        if mode == 3:
+            if out("FMean"):
+                return 2
+            if out("FHyst"):
+                return 3
+            if out("FrG1"):
+                return 4
+        for name, code in (("FpG2", 5), ("FPeak", 6), ("XPeak", 7), ("FStep", 8), ("XStop", 9)):
+            if out(name):
+                return code
+        return 0
+    v, n = env_counts(nodes_f[i], env)
+    return 1 if n < (env_n or len(env[0])) else (10 if v > 0 else 0)
+
+
+def env_counts(node_f: np.ndarray, env: tuple) -> tuple[int, int]:
+    """(nodes outside the band, nodes evaluated) of one curve, as FB_CurveEval counts them."""
+    done = np.isfinite(node_f)
+    lo, hi = np.asarray(env[0])[: len(node_f)], np.asarray(env[1])[: len(node_f)]
+    with np.errstate(invalid="ignore"):
+        outside = done & ((node_f < lo) | (node_f > hi))
+    return int(outside.sum()), int(done.sum())

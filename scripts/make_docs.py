@@ -105,9 +105,10 @@ def sweep_at(s: A, defect: str, method: str, level: float) -> float:
 
 
 def fill(text: str, s: A) -> str:
-    ns = dict(s=s, detection_table=detection_table, type1_table=type1_table, limits_table=limits_table,
-              sensitivity_table=sensitivity_table, speed_table=speed_table, week_table=week_table,
-              sweep_at=sweep_at, min=min, max=max, abs=abs, sum=sum, len=len)
+    ns = dict(s=s, b=bench(), t=compile_records(), detection_table=detection_table, type1_table=type1_table,
+              limits_table=limits_table, sensitivity_table=sensitivity_table, speed_table=speed_table,
+              week_table=week_table, bench_case_table=bench_case_table, sweep_at=sweep_at, min=min, max=max, abs=abs,
+              sum=sum, len=len, all=all)
 
     def sub(m: re.Match) -> str:
         val = eval(m.group(1).strip(), ns)  # templates are part of this repo
@@ -116,12 +117,51 @@ def fill(text: str, s: A) -> str:
     return FIELD.sub(sub, text)
 
 
+def bench() -> A:
+    """Cases of the PLC test bench and its result in the translator (scripts/make_plcsim_bench.py)."""
+    return A(json.loads((ROOT / "results" / "plcsim_bench_cases.json").read_text(encoding="utf-8")))
+
+
+def compile_records() -> A:
+    """The COMPILE and ARCHIVE lines of the TIA Portal records, as written by scripts/tia_build.ps1."""
+    out = {}
+    for key, name in (("blocks", "tia_compile.txt"), ("bench", "tia_compile_testbench.txt")):
+        lines = (ROOT / "results" / name).read_text(encoding="utf-8-sig").splitlines()
+        rec = dict(header=lines[0].strip(), compile="", archive_file="", archive_bytes=0, simulation="")
+        for ln in lines:
+            ln = ln.strip()
+            if ln.startswith("COMPILE "):
+                rec["compile"] = " ".join(ln.split())
+            elif ln.startswith("ARCHIVE ") and ln.endswith(" bytes"):
+                rec["archive_file"], size = ln[len("ARCHIVE "):-len(" bytes")].rsplit("  ", 1)
+                rec["archive_bytes"] = int(size)
+            elif ln.startswith("simulation support"):
+                rec["simulation"] = ln
+        out[key] = rec
+    return A(out)
+
+
+def bench_case_table(b: A) -> str:
+    rows = ["| Case | What runs | Evaluation mode | Expected verdict | Expected NOK code (`CaseNok`) |", "|---|---|---|---|---|"]
+    station_nok = b["translator"]["CaseNok"][b["replay_cases"]:]
+    station_verdict = ("OK", "NOK", "stays locked, then opens", "NOK", "NOK, start blocked", "OK")
+    for c in b["cases"]:
+        if c["kind"] == "replay":
+            rows.append(f"| {c['case']} | Replay: {c['part']} | {c['mode']} ({c['mode_name']}) | "
+                        f"{'OK' if c['expected_ok'] else 'NOK'} | {c['expected_nok']} |")
+        else:
+            i = c["case"] - b["replay_cases"] - 1
+            rows.append(f"| {c['case']} | {c['part']} | 3 | {station_verdict[i]} | {station_nok[i]} |")
+    return "\n".join(rows)
+
+
 def main() -> None:
     s = A(json.loads((ROOT / "results" / "summary.json").read_text(encoding="utf-8")))
-    for name in ("README", "DOSSIER"):
+    for name, target in (("README", ROOT / "README.md"), ("DOSSIER", ROOT / "DOSSIER.md"),
+                         ("PLCSIM_RUN", ROOT / "docs" / "PLCSIM_RUN.md")):
         tmpl = (ROOT / "docs" / "templates" / f"{name}.tmpl.md").read_text(encoding="utf-8")
-        (ROOT / f"{name}.md").write_text(fill(tmpl, s), encoding="utf-8", newline="\n")
-        print(f"wrote {name}.md")
+        target.write_text(fill(tmpl, s), encoding="utf-8", newline="\n")
+        print(f"wrote {target.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,253 @@
+{
+ "seed": 20261126,
+ "tolerance": 0.001,
+ "margin": 0.02,
+ "curves": 10,
+ "samples": 5932,
+ "replay_cases": 14,
+ "station_cases": 6,
+ "cases_total": 20,
+ "data_bytes": 47456,
+ "cases": [
+  {
+   "case": 1,
+   "kind": "replay",
+   "part": "good, nominal part",
+   "mode": 3,
+   "mode_name": "windows + return stroke",
+   "expected_ok": true,
+   "expected_nok": 0
+  },
+  {
+   "case": 2,
+   "kind": "replay",
+   "part": "good, random part",
+   "mode": 3,
+   "mode_name": "windows + return stroke",
+   "expected_ok": true,
+   "expected_nok": 0
+  },
+  {
+   "case": 3,
+   "kind": "replay",
+   "part": "missing spring",
+   "mode": 3,
+   "mode_name": "windows + return stroke",
+   "expected_ok": false,
+   "expected_nok": 2
+  },
+  {
+   "case": 4,
+   "kind": "replay",
+   "part": "weak spring, 70 % wind-up (below the 30 g limit)",
+   "mode": 3,
+   "mode_name": "windows + return stroke",
+   "expected_ok": false,
+   "expected_nok": 2
+  },
+  {
+   "case": 5,
+   "kind": "replay",
+   "part": "wrong-variant spring (1.6 mm wire)",
+   "mode": 3,
+   "mode_name": "windows + return stroke",
+   "expected_ok": false,
+   "expected_nok": 2
+  },
+  {
+   "case": 6,
+   "kind": "replay",
+   "part": "binding pivot, +0.35 N m",
+   "mode": 3,
+   "mode_name": "windows + return stroke",
+   "expected_ok": false,
+   "expected_nok": 3
+  },
+  {
+   "case": 7,
+   "kind": "replay",
+   "part": "latch lever unhooked",
+   "mode": 3,
+   "mode_name": "windows + return stroke",
+   "expected_ok": false,
+   "expected_nok": 5
+  },
+  {
+   "case": 8,
+   "kind": "replay",
+   "part": "wrong-hand spring",
+   "mode": 3,
+   "mode_name": "windows + return stroke",
+   "expected_ok": false,
+   "expected_nok": 2
+  },
+  {
+   "case": 9,
+   "kind": "replay",
+   "part": "particle at the end stop, 2.0 mm",
+   "mode": 3,
+   "mode_name": "windows + return stroke",
+   "expected_ok": false,
+   "expected_nok": 9
+  },
+  {
+   "case": 10,
+   "kind": "replay",
+   "part": "weak spring (70 %) hidden by +0.10 N m pivot friction",
+   "mode": 3,
+   "mode_name": "windows + return stroke",
+   "expected_ok": false,
+   "expected_nok": 2
+  },
+  {
+   "case": 11,
+   "kind": "replay",
+   "part": "weak spring (70 %) hidden by +0.10 N m pivot friction",
+   "mode": 2,
+   "mode_name": "pull-stroke windows",
+   "expected_ok": true,
+   "expected_nok": 0
+  },
+  {
+   "case": 12,
+   "kind": "replay",
+   "part": "particle at the end stop, 2.0 mm",
+   "mode": 1,
+   "mode_name": "peak force only",
+   "expected_ok": true,
+   "expected_nok": 0
+  },
+  {
+   "case": 13,
+   "kind": "replay",
+   "part": "good, nominal part",
+   "mode": 4,
+   "mode_name": "envelope",
+   "expected_ok": true,
+   "expected_nok": 0
+  },
+  {
+   "case": 14,
+   "kind": "replay",
+   "part": "weak spring, 70 % wind-up (below the 30 g limit)",
+   "mode": 4,
+   "mode_name": "envelope",
+   "expected_ok": true,
+   "expected_nok": 0
+  },
+  {
+   "case": 15,
+   "kind": "station",
+   "part": "Station: good LH unit is clamped, pulled and passed"
+  },
+  {
+   "case": 16,
+   "kind": "station",
+   "part": "Station: RH unit on an LH recipe is rejected with code 20 and never pulled"
+  },
+  {
+   "case": 17,
+   "kind": "station",
+   "part": "Station: the reject lock ignores a chute signal while the part is in the fixture, refuses a new part, and opens when the chute sensor sees a part after the fixture is empty"
+  },
+  {
+   "case": 18,
+   "kind": "station",
+   "part": "Station: unit with unhooked latch lever is pulled and rejected with code 5"
+  },
+  {
+   "case": 19,
+   "kind": "station",
+   "part": "Station: third reject in a row asks for the master part and blocks the start"
+  },
+  {
+   "case": 20,
+   "kind": "station",
+   "part": "Station: after the acknowledge a good unit is pulled and passed"
+  }
+ ],
+ "translator": {
+  "Done": true,
+  "AllPassed": true,
+  "CasesTotal": 20,
+  "CasesRun": 20,
+  "CasesPassed": 20,
+  "CasesFailed": 0,
+  "FirstFailedCase": 0,
+  "FirstFailedCheck": 0,
+  "MaxFeatError": 9.5367431640625e-07,
+  "BenchCalls": 102,
+  "CasePass": [
+   true,
+   true,
+   true,
+   true,
+   true,
+   true,
+   true,
+   true,
+   true,
+   true,
+   true,
+   true,
+   true,
+   true,
+   true,
+   true,
+   true,
+   true,
+   true,
+   true
+  ],
+  "CaseCheck": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "CaseNok": [
+   0,
+   0,
+   2,
+   2,
+   2,
+   3,
+   5,
+   2,
+   9,
+   2,
+   0,
+   0,
+   0,
+   0,
+   0,
+   20,
+   20,
+   5,
+   5,
+   0
+  ],
+  "station": {
+   "CntTotal": 5,
+   "CntOk": 2,
+   "CntNok": 3,
+   "CntRejectConfirmed": 3
+  }
+ }
+}

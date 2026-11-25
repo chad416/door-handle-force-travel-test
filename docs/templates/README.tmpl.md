@@ -2,7 +2,7 @@
 
 End-of-line force-travel test of a painted exterior car door-handle unit: which evaluation windows separate assembly defects from good handles, what the rig must be able to measure, and what the test costs a three-shift line.
 
-> **Simulated study, no hardware.** The handle, the test rig, the defects, the line and every "measurement" here are models. All part values and their spreads are illustrative. That handle lines run a force-travel test at the end of the line is an assumption of this study, not a published fact about any plant. The regulation and standards content comes from the public sources in [docs/SOURCES.md](docs/SOURCES.md); what was not read is listed there. The PLC code compiles in TIA Portal V18 with 0 errors and 0 warnings (record in `results/tia_compile.txt`); in the tests it runs through a translator in Python, and it was not run on a PLC.
+> **Simulated study, no hardware.** The handle, the test rig, the defects, the line and every "measurement" here are models. All part values and their spreads are illustrative. That handle lines run a force-travel test at the end of the line is an assumption of this study, not a published fact about any plant. The regulation and standards content comes from the public sources in [docs/SOURCES.md](docs/SOURCES.md); what was not read is listed there. The PLC code compiles in TIA Portal V18 with 0 errors and 0 warnings (record in `results/tia_compile.txt`); in the tests it runs through a translator in Python. It was not run on a PLC. A self-checking test project for S7-PLCSIM is prepared ([docs/PLCSIM_RUN.md](docs/PLCSIM_RUN.md)); the PLCSIM run itself is not recorded yet.
 
 ## The question
 
@@ -52,13 +52,16 @@ The full report is [DOSSIER.md](DOSSIER.md): need, modes, requirements, architec
 
 Both are Siemens SCL sources in TIA Portal V18 style. `handletest/scl.py` translates them to Python with 32-bit Real arithmetic, so the same source text runs in the tests: {{s.plc_loop.replay.of}} curves went through `FB_CurveEval` and through the NumPy evaluation with the same verdict in {{s.plc_loop.replay.agree}} cases (largest feature difference {{s.plc_loop.replay.feature_max_abs_diff:.1e}}), and {{s.plc_loop.parts}} parts went through the whole station against a plant model.
 
+`plc/test/` holds a test bench that runs inside the PLC without any input: a data block with {{b.curves}} recorded curves and the values the NumPy evaluation gives for them, a bench block that replays them into `FB_CurveEval` and runs `FB_HandleStation` against a small plant stand-in, a result data block and OB1. In the translator {{b.translator.CasesPassed}} of {{b.translator.CasesTotal}} cases pass; the whole test project compiles in TIA Portal V18 (`{{t.bench.compile}}`, `results/tia_compile_testbench.txt`). How to run it in S7-PLCSIM and what must be seen: [docs/PLCSIM_RUN.md](docs/PLCSIM_RUN.md).
+
 ## How to run
 
 ```
 pip install -r requirements.txt
 python -m pytest -q
 python scripts/run_all.py        # results/summary.json and docs/img (several minutes)
-python scripts/make_docs.py      # README.md and DOSSIER.md from docs/templates and the summary
+python scripts/make_plcsim_bench.py   # plc/test/DB_TestData.scl from the model and the limits of the study
+python scripts/make_docs.py      # README.md, DOSSIER.md, docs/PLCSIM_RUN.md from docs/templates
 ```
 
 `--quick` runs a small study for CI. Every result number in this README and in the dossier is filled in from `results/summary.json` by `scripts/make_docs.py`.
@@ -71,7 +74,7 @@ python scripts/make_docs.py      # README.md and DOSSIER.md from docs/templates 
 - Quasi-static model: no handle inertia, no stick-slip, no temperature, no paint damage. Drive dynamics are an acceleration limit only; the force at the stop depends on it.
 - Defect rates, micro-stops, breakdowns and operator times of the line are assumed.
 - UN R11 was read in the text of the 03 series of amendments; later revisions could not be opened. SAE J839, ISO 22400-2, the AIAG MSA manual and VDA Volume 5 were not read; public secondary sources were used and are named.
-- The SCL compiles in TIA Portal V18 for an S7-1513 with 0 errors and 0 warnings (`scripts/tia_build.ps1`, record in `results/tia_compile.txt`). It was not run on a PLC or in PLCSIM. The translator supports only the subset used here.
+- The SCL compiles in TIA Portal V18 for an S7-1513 with 0 errors and 0 warnings (`scripts/tia_build.ps1`, record in `results/tia_compile.txt`). It was not run on a PLC. The PLCSIM run of the test project is prepared but not done (docs/PLCSIM_RUN.md). The translator supports only the subset used here.
 - No real force-travel curve was available for comparison.
 
 ## Repo map
@@ -87,7 +90,8 @@ python scripts/make_docs.py      # README.md and DOSSIER.md from docs/templates 
 | `handletest/line.py` | One week on the line, OEE terms |
 | `handletest/study.py`, `handletest/plots.py` | The whole study and the figures |
 | `plc/` | The two SCL blocks |
-| `tests/` | 28 tests: regulation example, closed forms, SCL against NumPy, station sequence, line model |
+| `plc/test/` | Test bench for S7-PLCSIM: recorded curves and expected values (generated), plant stand-in, bench, result data block, OB1 |
+| `tests/` | 38 tests: regulation example, closed forms, SCL against NumPy, station sequence, line model, the PLC test bench in the translator |
 | `results/summary.json` | All numbers |
 | `DOSSIER.md`, `docs/SOURCES.md` | Systems-engineering dossier; sources with what was taken from each |
 

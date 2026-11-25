@@ -1,0 +1,29 @@
+﻿TIA Portal V18, CPU OrderNumber:6ES7 513-1AL02-0AB0/V2.9, 2026-11-25 04:20
+simulation support during block compilation: True
+generated FB_CurveEval
+generated FB_HandleStation
+generated DB_TestData
+generated DB_TestResult
+generated FB_TestPlant
+generated FB_TestBench
+generated OB_Main
+COMPILE Success  errors=0  warnings=0
+  Success  PLC_1  
+    Success  Program blocks  
+      Success  FB_HandleStation (FB2)  Block was successfully compiled.
+      Success  FB_TestBench (FB4)  Block was successfully compiled.
+      Success  FB_CurveEval (FB1)  Block was successfully compiled.
+      Success  FB_TestPlant (FB3)  Block was successfully compiled.
+      Success  Main (OB1)  Block was successfully compiled.
+  Success    Compiling finished (errors: 0; warnings: 0)
+blocks in the project:
+  FB_CurveEval  FB 1  SCL  consistent=True
+  FB_HandleStation  FB 2  SCL  consistent=True
+  DB_TestData  GlobalDB 1  DB  consistent=True
+  DB_TestResult  GlobalDB 2  DB  consistent=True
+  FB_TestPlant  FB 3  SCL  consistent=True
+  FB_TestBench  FB 4  SCL  consistent=True
+  InstTestBench  InstanceDB 3  DB  consistent=True
+  Main  OB 1  SCL  consistent=True
+ARCHIVE C:\TIA_build\plcsim\handle37_plcsim_test.zap18  858466 bytes
+

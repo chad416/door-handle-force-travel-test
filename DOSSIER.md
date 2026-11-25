@@ -169,6 +169,8 @@ Chosen: windows + return stroke. It is the only method that meets R-01 in the ma
 ### 7.2 PLC in the loop
 `FB_CurveEval` against the NumPy evaluation on the same samples: 640 of 640 verdicts equal, largest element difference 9.5e-07. Whole station against the plant, 20 parts per group and method: no good part rejected; reject codes of the chosen method per defect are in `results/summary.json` (`plc_loop.nok_codes_pullret`).
 
+Test bench inside the PLC (`plc/test/`, `docs/PLCSIM_RUN.md`): 14 replay cases and 6 station cases with expected values from the NumPy evaluation, in a data block; a bench block compares and writes `DB_TestResult`. Through the translator: 20 of 20 cases pass. TIA Portal V18, whole test project: `COMPILE Success errors=0 warnings=0`. Not yet run in S7-PLCSIM.
+
 ### 7.3 Sensitivity: what moves the false rejects
 
 | Change (limits unchanged) | Pull-stroke windows | Windows + return stroke | Envelope |
@@ -217,7 +219,7 @@ Assumed: all masses, spring data, friction, latch load, tolerances and their dis
 | R-07 | Speed table | 54 N at 50 mm/s: met with little margin |
 | R-08 | Section 5.4 | 4.24 s of 12 s |
 
-Validation against a real handle and a real rig has not been done. First steps with hardware: measure friction and spring torque of 50 units, run the Type-1 study on the real rig, load the SCL (it compiles in TIA Portal V18 with 0 errors and 0 warnings) on a CPU and check the cycle load of the 2 ms interrupt.
+Validation against a real handle and a real rig has not been done. First steps with hardware: measure friction and spring torque of 50 units, run the Type-1 study on the real rig, run the prepared test project in S7-PLCSIM (`docs/PLCSIM_RUN.md`), then load the SCL (it compiles in TIA Portal V18 with 0 errors and 0 warnings) on a CPU and check the cycle load of the 2 ms interrupt.
 
 ## 11. Limits of this work
 

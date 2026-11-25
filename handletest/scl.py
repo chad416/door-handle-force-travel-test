@@ -8,6 +8,11 @@ into a Python class and runs it with S7 data types:
 * Int   -> 16-bit, DInt -> 32-bit (wrap-around on assignment)
 * Bool, Array[lo..hi] of <elementary>, multi-instances of other FBs
 
+Besides FUNCTION_BLOCKs it reads global DATA_BLOCKs (elementary variables and arrays, start values
+in the BEGIN section), instance DATA_BLOCKs and ORGANIZATION_BLOCKs, so that a small test program
+with its data runs as a whole (load_program).  Variables are addressed as #local, "DB".member,
+#instance.member (inputs, outputs, nested instances) and [index].
+
 Supported statements: assignment, IF/ELSIF/ELSE, CASE ... OF (integer labels and lists),
 FOR ... TO ... [BY] ... DO, REGION, RETURN, FB multi-instance calls, whole-array copy
 (#a := #b; same element type and bounds).  VAR CONSTANT is read-only.  Expressions: arithmetic, comparison,
@@ -132,6 +137,8 @@ class Parser:
         self.t = toks
         self.i = 0
         self.fb_types = fb_types  # name -> its variable table (for member types)
+        self.db_types: dict[str, dict[str, VarDecl]] = {}  # global data blocks
+        self.inst_dbs: dict[str, str] = {}  # instance data block -> FB name
         self.vars: dict[str, VarDecl] = {}
         self.lines: list[str] = []
         self.loop_id = 0
@@ -303,36 +310,65 @@ class Parser:
             s, t = self.expr()
             self.expect(")")
             return f"({s})", t
-        if tok.kind == "local":
+        if tok.kind in ("local", "qname"):
             return self.access(tok)
         if tok.kind == "ident" and self.peek().text == "(":
             return self.function_call(tok)
         raise SclError(f"line {tok.line}: unexpected {tok.text!r} in expression")
 
-    def access(self, tok: Tok) -> tuple[str, str]:
-        if tok.text not in self.vars:
-            raise SclError(f"line {tok.line}: undeclared #{tok.text}")
-        d = self.vars[tok.text]
-        src, typ = f"self.{d.name}", d.type
+    def designator(self, tok: Tok) -> tuple[str, VarDecl, bool, bool]:
+        """#local, "GlobalDB".member or "InstanceDB".member, then .member (FB instances) and [index].
+
+        Returns (python source, declaration of the variable, indexed, writable). With `indexed` the
+        source addresses one element of the array declaration. From outside an instance only its
+        inputs and outputs (and the instances inside it) can be addressed; only inputs can be written.
+        """
+        if tok.kind == "local":
+            d = self.vars.get(tok.text)
+            if d is None:
+                raise SclError(f"line {tok.line}: undeclared #{tok.text}")
+            src = f"self.{d.name}"
+            writable = d.section not in ("VAR_INPUT", "VAR CONSTANT")
+        else:
+            self.expect(".")
+            member = self.next().text
+            if tok.text in self.db_types:
+                d = self.db_types[tok.text].get(member)
+                writable = True
+            elif tok.text in self.inst_dbs:
+                d = self.fb_types[self.inst_dbs[tok.text]].get(member)
+                if d is not None and not (d.section in ("VAR_INPUT", "VAR_OUTPUT") or d.type.startswith("FB:")):
+                    d = None
+                writable = d is not None and d.section == "VAR_INPUT"
+            else:
+                raise SclError(f"line {tok.line}: unknown data block {tok.text!r}")
+            if d is None:
+                raise SclError(f"line {tok.line}: {tok.text!r} has no accessible member {member!r}")
+            src = f"_DB[{tok.text!r}].{d.name}"
+        while self.peek().text == "." and d.type.startswith("FB:"):
+            self.next()
+            member = self.next().text
+            m = self.fb_types[d.type[3:]].get(member)
+            if m is None or not (m.section in ("VAR_INPUT", "VAR_OUTPUT") or m.type.startswith("FB:")):
+                raise SclError(f"line {tok.line}: {d.name}.{member} is not an input, an output or an instance")
+            src, d, writable = f"{src}.{m.name}", m, m.section == "VAR_INPUT"
+        indexed = False
         if self.peek().text == "[":
             if d.type != "ARRAY":
-                raise SclError(f"line {tok.line}: #{d.name} is not an array")
+                raise SclError(f"line {tok.line}: {d.name} is not an array")
             self.next()
             idx, it = self.expr()
             self.expect("]")
             if it not in ("INT", "DINT"):
                 raise SclError(f"line {tok.line}: array index must be integer")
-            src, typ = f"self.{d.name}[_ix({idx}, {d.lo}, {d.hi})]", d.elem
+            src, indexed = f"{src}[_ix({idx}, {d.lo}, {d.hi})]", True
         elif self.peek().text == ".":
-            if not d.type.startswith("FB:"):
-                raise SclError(f"line {tok.line}: #{d.name} has no members")
-            self.next()
-            member = self.next().text
-            fb_vars = self.fb_types[d.type[3:]]
-            if member not in fb_vars or fb_vars[member].section not in ("VAR_OUTPUT", "VAR_INPUT"):
-                raise SclError(f"line {tok.line}: {d.name}.{member} is not an input/output")
-            src, typ = f"self.{d.name}.{member}", fb_vars[member].type
-        return src, typ
+            raise SclError(f"line {tok.line}: {d.name} has no members")
+        return src, d, indexed, writable
+
+    def access(self, tok: Tok) -> tuple[str, str]:
+        src, d, indexed, _ = self.designator(tok)
+        return src, (d.elem if indexed else d.type)
 
     def function_call(self, tok: Tok) -> tuple[str, str]:
         name = tok.up
@@ -498,58 +534,64 @@ class Parser:
             self.expect(";")
             self.emit(depth, "return")
             return
-        if tok.kind == "local":
+        if tok.kind in ("local", "qname"):
             self.next()
-            d = self.vars.get(tok.text)
-            if d is None:
-                raise SclError(f"line {tok.line}: undeclared #{tok.text}")
             if self.peek().text == "(":
-                self.fb_call(d, depth)
+                self.fb_call(tok, depth)
                 return
-            if self.peek().text == "[":
-                self.next()
-                idx, _ = self.expr()
-                self.expect("]")
-                target, typ = f"self.{d.name}[_ix({idx}, {d.lo}, {d.hi})]", d.elem
-            else:
-                if d.type == "ARRAY" and self.peek().text == ":=" and self.peek(1).kind == "local"                         and self.peek(2).text == ";":
-                    # whole-array copy between two arrays of the same element type and bounds
-                    self.next()
-                    src = self.vars.get(self.next().text)
-                    self.expect(";")
-                    if d.section in ("VAR_INPUT", "VAR CONSTANT"):
-                        raise SclError(f"line {tok.line}: writing #{d.name} ({d.section}) is not allowed here")
-                    if src is None or (src.type, src.elem, src.lo, src.hi) != (d.type, d.elem, d.lo, d.hi):
-                        raise SclError(f"line {tok.line}: array copy needs two arrays of the same type and bounds")
-                    self.emit(depth, f"self.{d.name} = _mov(list(self.{src.name}))")
-                    return
-                if d.type == "ARRAY" or d.type.startswith("FB:"):
-                    raise SclError(f"line {tok.line}: whole-array/instance assignment not supported")
-                if d.section in ("VAR_INPUT", "VAR CONSTANT"):
-                    raise SclError(f"line {tok.line}: writing #{d.name} ({d.section}) is not allowed here")
-                target, typ = f"self.{d.name}", d.type
+            target, d, indexed, writable = self.designator(tok)
+            if not writable:
+                raise SclError(f"line {tok.line}: writing {d.name} ({d.section}) is not allowed here")
             self.expect(":=")
+            if d.type == "ARRAY" and not indexed:
+                # whole-array copy between two arrays of the same element type and bounds
+                self.emit(depth, f"{target} = _mov({self.array_value(d)})")
+                self.expect(";")
+                return
+            if d.type.startswith("FB:"):
+                raise SclError(f"line {tok.line}: instance assignment not supported")
             val, _ = self.expr()
             self.expect(";")
-            self.emit(depth, f"{target} = _mov({self.cast_for(typ, val)})")
+            self.emit(depth, f"{target} = _mov({self.cast_for(d.elem if indexed else d.type, val)})")
             return
         raise SclError(f"line {tok.line}: unsupported statement starting with {tok.text!r}")
 
-    def fb_call(self, d: VarDecl, depth: int) -> None:
-        if not d.type.startswith("FB:"):
-            raise SclError(f"#{d.name} is not an FB instance")
-        fb_vars = self.fb_types[d.type[3:]]
+    def array_value(self, target: VarDecl) -> str:
+        """Right-hand side of a whole-array copy: a designator of an array with the same shape."""
+        tok = self.next()
+        if tok.kind not in ("local", "qname"):
+            raise SclError(f"line {tok.line}: array copy needs an array on the right-hand side")
+        src, d, indexed, _ = self.designator(tok)
+        if indexed or (d.type, d.elem, d.lo, d.hi) != ("ARRAY", target.elem, target.lo, target.hi):
+            raise SclError(f"line {tok.line}: array copy needs two arrays of the same type and bounds")
+        return f"list({src})"
+
+    def fb_call(self, tok: Tok, depth: int) -> None:
+        """#Instance(...) of a multi-instance, or "InstanceDB"(...)."""
+        if tok.kind == "local":
+            d = self.vars.get(tok.text)
+            if d is None or not d.type.startswith("FB:"):
+                raise SclError(f"line {tok.line}: #{tok.text} is not an FB instance")
+            inst, fb = f"self.{d.name}", d.type[3:]
+        elif tok.text in self.inst_dbs:
+            inst, fb = f"_DB[{tok.text!r}]", self.inst_dbs[tok.text]
+        else:
+            raise SclError(f"line {tok.line}: {tok.text!r} is not an instance data block")
+        fb_vars = self.fb_types[fb]
         self.expect("(")
         while not self.accept(")"):
             pname = self.next().text
             if pname not in fb_vars or fb_vars[pname].section != "VAR_INPUT":
-                raise SclError(f"{d.name}: {pname} is not an input of {d.type[3:]}")
+                raise SclError(f"line {tok.line}: {pname} is not an input of {fb}")
             self.expect(":=")
-            val, _ = self.expr()
-            self.emit(depth, f"self.{d.name}.{pname} = {self.cast_for(fb_vars[pname].type, val)}")
+            if fb_vars[pname].type == "ARRAY":
+                self.emit(depth, f"{inst}.{pname} = {self.array_value(fb_vars[pname])}")
+            else:
+                val, _ = self.expr()
+                self.emit(depth, f"{inst}.{pname} = {self.cast_for(fb_vars[pname].type, val)}")
             self.accept(",")
         self.expect(";")
-        self.emit(depth, f"self.{d.name}()")
+        self.emit(depth, f"{inst}()")
 
 
 # --------------------------------------------------------------------------
@@ -632,41 +674,121 @@ _DEFAULT = {"REAL": "np.float32(0.0)", "INT": "0", "DINT": "0", "BOOL": "False"}
 # public API
 # --------------------------------------------------------------------------
 
-def _block_spans(toks: list[Tok]) -> list[tuple[str, int, int]]:
+_BLOCKS = {"FUNCTION_BLOCK": "END_FUNCTION_BLOCK", "DATA_BLOCK": "END_DATA_BLOCK",
+           "ORGANIZATION_BLOCK": "END_ORGANIZATION_BLOCK"}
+
+
+def _block_spans(toks: list[Tok]) -> list[tuple[str, str, int, int]]:
     spans, i = [], 0
     while toks[i].kind != "eof":
-        if toks[i].up == "FUNCTION_BLOCK":
+        kind = toks[i].up
+        if kind in _BLOCKS:
             name = toks[i + 1].text
             j = i
-            while toks[j].up != "END_FUNCTION_BLOCK":
+            while toks[j].up != _BLOCKS[kind]:
                 if toks[j].kind == "eof":
-                    raise SclError(f"{name}: missing END_FUNCTION_BLOCK")
+                    raise SclError(f"{name}: missing {_BLOCKS[kind]}")
                 j += 1
-            spans.append((name, i, j))
+            spans.append((kind, name, i, j))
             i = j + 1
-        elif toks[i].up in ("ORGANIZATION_BLOCK", "FUNCTION", "DATA_BLOCK", "TYPE"):
-            raise SclError(f"line {toks[i].line}: only FUNCTION_BLOCKs are translated")
+        elif kind in ("FUNCTION", "TYPE"):
+            raise SclError(f"line {toks[i].line}: {toks[i].text} is not translated")
         else:
             raise SclError(f"line {toks[i].line}: unexpected {toks[i].text!r}")
     return spans
 
 
+def _parse_data_block(toks: list[Tok], name: str):
+    """Global DB: ("global", variables with their start values). Instance DB: ("instance", FB name)."""
+    p = Parser(toks, {})
+    p.expect("DATA_BLOCK")
+    p.next()
+    p.accept("NON_RETAIN")
+    if p.peek().kind == "qname":
+        fb = p.next().text
+        p.expect("BEGIN")
+        p.expect("END_DATA_BLOCK")
+        return "instance", fb
+    p.parse_var_sections()
+    p.expect("BEGIN")
+    while not p.accept("END_DATA_BLOCK"):          # start values: Name := literal;  Name[i] := literal;
+        t = p.next()
+        d = p.vars.get(t.text)
+        if d is None:
+            raise SclError(f"line {t.line}: {name} has no variable {t.text!r}")
+        if p.accept("["):
+            i = p.parse_int_const()
+            p.expect("]")
+            if d.type != "ARRAY" or not d.lo <= i <= d.hi:
+                raise SclError(f"line {t.line}: {name}.{d.name}[{i}] does not exist")
+            p.expect(":=")
+            if not isinstance(d.init, dict):
+                d.init = {}
+            d.init[i] = p.parse_literal()
+        else:
+            if d.type == "ARRAY":
+                raise SclError(f"line {t.line}: start value of the whole array {d.name} is not supported")
+            p.expect(":=")
+            d.init = p.parse_literal()
+        p.expect(";")
+    return "global", p.vars
+
+
+def _py_value(typ: str, v: object) -> str:
+    if typ == "REAL":
+        return f"np.float32({float(v)!r})"
+    if typ == "BOOL":
+        return repr(bool(v))
+    return repr(int(v))
+
+
+def _data_block_source(name: str, variables: dict[str, VarDecl]) -> list[str]:
+    cname = "DB_" + re.sub(r"\W", "_", name)
+    out = [f"class {cname}:", f"    SCL_NAME = {name!r}", "    def __init__(self):"]
+    for d in variables.values():
+        if d.type == "ARRAY":
+            start = d.init if isinstance(d.init, dict) else {}
+            zero = {"REAL": 0.0, "BOOL": False}.get(d.elem, 0)
+            vals = ", ".join(_py_value(d.elem, start.get(i, zero)) for i in range(d.lo, d.hi + 1))
+            out.append(f"        self.{d.name} = [{vals}]")
+        else:
+            out.append(f"        self.{d.name} = {_py_value(d.type, d.init) if d.init is not None else _DEFAULT[d.type]}")
+    if not variables:
+        out.append("        pass")
+    out += [f"_DB[{name!r}] = {cname}()", ""]
+    return out
+
+
 def translate(sources: list[str]) -> tuple[str, dict[str, dict[str, VarDecl]]]:
-    """Translate SCL sources (any order) into one Python module source."""
-    blocks = []
+    """Translate SCL sources (any order) into one Python module source.
+
+    The module fills three dictionaries: _FB (name -> class), _DB (name -> object: a global data block
+    or the instance of an FB) and _OB (name -> callable organization block).
+    """
+    blocks: dict[str, list[tuple[str, list[Tok]]]] = {k: [] for k in _BLOCKS}
     for src in sources:
         toks = tokenize(src)
-        for name, a, b in _block_spans(toks):
-            blocks.append((name, toks[a:b + 1] + [Tok("eof", "", toks[b].line)]))
+        for kind, name, a, b in _block_spans(toks):
+            blocks[kind].append((name, toks[a:b + 1] + [Tok("eof", "", toks[b].line)]))
     fb_types: dict[str, dict[str, VarDecl]] = {}
+    db_types: dict[str, dict[str, VarDecl]] = {}
+    inst_dbs: dict[str, str] = {}
     code = ["import numpy as np",
             "from handletest.scl import _f32, _wrap, _idiv, _imod, _limit, _ix, _round_even, _fop, _fn, _cmp, _mov, _iop",
             ""]
-    pending = dict(blocks)
+    for name, toks in blocks["DATA_BLOCK"]:
+        kind, content = _parse_data_block(toks, name)
+        if kind == "instance":
+            inst_dbs[name] = content
+        else:
+            db_types[name] = content
+            code.extend(_data_block_source(name, content))
+    pending = dict(blocks["FUNCTION_BLOCK"])
     while pending:  # a block can only be translated after the FBs it instantiates
         progressed = False
         for name, toks in list(pending.items()):
             p = Parser(toks, fb_types)
+            p.db_types, p.inst_dbs = db_types, inst_dbs
             p.expect("FUNCTION_BLOCK")
             p.next()
             try:
@@ -679,17 +801,30 @@ def translate(sources: list[str]) -> tuple[str, dict[str, dict[str, VarDecl]]]:
             p.statements(2, ("END_FUNCTION_BLOCK",))
             p.expect("END_FUNCTION_BLOCK")
             fb_types[name] = p.vars
-            cls = _class_source(name, p)
-            code.extend(cls)
+            code.extend(_class_source(name, p))
             del pending[name]
             progressed = True
         if not progressed:
             raise SclError(f"cannot resolve FB types for: {', '.join(pending)}")
+    for name, fb in inst_dbs.items():
+        if fb not in fb_types:
+            raise SclError(f"instance data block {name!r}: unknown FB {fb!r}")
+        code += [f"_DB[{name!r}] = _FB[{fb!r}]()", ""]
+    for name, toks in blocks["ORGANIZATION_BLOCK"]:
+        p = Parser(toks, fb_types)
+        p.db_types, p.inst_dbs = db_types, inst_dbs
+        p.expect("ORGANIZATION_BLOCK")
+        p.next()
+        p.parse_var_sections()
+        p.expect("BEGIN")
+        p.statements(2, ("END_ORGANIZATION_BLOCK",))
+        p.expect("END_ORGANIZATION_BLOCK")
+        code.extend(_class_source(name, p, registry="_OB", prefix="OB_", instantiate=True))
     return "\n".join(code) + "\n", fb_types
 
 
-def _class_source(name: str, p: Parser) -> list[str]:
-    cname = re.sub(r"\W", "_", name)
+def _class_source(name: str, p: Parser, registry: str = "_FB", prefix: str = "", instantiate: bool = False) -> list[str]:
+    cname = prefix + re.sub(r"\W", "_", name)
     out = [f"class {cname}:", f"    SCL_NAME = {name!r}", "    def __init__(self):"]
     temps = []
     for d in p.vars.values():
@@ -698,32 +833,48 @@ def _class_source(name: str, p: Parser) -> list[str]:
         elif d.type == "ARRAY":
             init = f"[{_DEFAULT[d.elem]} for _ in range({d.hi - d.lo + 1})]"
         elif d.init is not None:
-            init = {"REAL": f"np.float32({float(d.init)!r})", "BOOL": repr(bool(d.init))}.get(d.type, repr(int(d.init)))
+            init = _py_value(d.type, d.init)
         else:
             init = _DEFAULT[d.type]
         out.append(f"        self.{d.name} = {init}")
         if d.section == "VAR_TEMP":
             temps.append((d, init))
+    if not p.vars:
+        out.append("        pass")
     out.append("    def __call__(self):")
     for d, init in temps:  # temp data is re-initialised on every call
         out.append(f"        self.{d.name} = {init}")
     out.extend(p.lines)
-    out.append(f"_FB[{name!r}] = {cname}")
+    out.append(f"{registry}[{name!r}] = {cname}{'()' if instantiate else ''}")
     out.append("")
     return out
 
 
+@dataclass
+class Program:
+    """A translated set of sources: FB classes, data block objects, callable organization blocks."""
+    fb: dict
+    db: dict
+    ob: dict
+
+
+def load_program(paths: list[str | Path]) -> Program:
+    """Translate and load SCL files with data blocks and organization blocks. Every call gives a
+    fresh set of data blocks (start values as in the sources)."""
+    sources = [Path(x).read_text(encoding="utf-8-sig") for x in paths]
+    code, _ = translate(sources)
+    namespace: dict[str, object] = {"_FB": {}, "_DB": {}, "_OB": {}}
+    exec(compile(code, "<scl>", "exec"), namespace)
+    return Program(dict(namespace["_FB"]), dict(namespace["_DB"]), dict(namespace["_OB"]))  # type: ignore[arg-type]
+
+
 def load(paths: list[str | Path]) -> dict[str, type]:
     """Translate and load SCL files; returns {FB name: Python class}."""
-    sources = [Path(x).read_text(encoding="utf-8") for x in paths]
-    code, _ = translate(sources)
-    namespace: dict[str, object] = {"_FB": {}}
-    exec(compile(code, "<scl>", "exec"), namespace)
-    return dict(namespace["_FB"])  # type: ignore[arg-type]
+    return load_program(paths).fb
 
 
 def generated_source(paths: list[str | Path]) -> str:
     return translate([Path(x).read_text(encoding="utf-8") for x in paths])[0]
 
 
-__all__ = ["SclError", "load", "translate", "generated_source", "math", "OPS", "reset_ops"]
+__all__ = ["SclError", "load", "load_program", "Program", "translate", "generated_source", "math", "OPS", "reset_ops"]
