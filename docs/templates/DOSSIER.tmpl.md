@@ -97,7 +97,7 @@ FStep and FrG1 have one-sided limits; Cg is not defined for them. Resolution: th
 
 {{speed_table(s)}}
 
-Limits are set again for each speed. The force at the stop is from the SCL block in the loop: the PLC reverses in the first sample at or above 40 N, the axis then needs time to stop (acceleration limit 3000 mm/s2 [A]). Sampling is not what limits the speed: at 0.2 mm per sample the detection is unchanged. R-07 limits it.
+Limits are set again for each speed, on {{s.sizes.sens}} good parts, and tried on another {{s.sizes.sens}}; the false-reject column therefore scatters by about 0.1 points around the target. The force at the stop is from the SCL block in the loop: the PLC reverses in the first sample at or above 40 N, the axis then needs time to stop (acceleration limit 3000 mm/s2 [A]). Sampling is not what limits the speed: at 0.2 mm per sample the detection is unchanged. R-07 limits it.
 
 Station time for an OK part: load {{s.line_assumptions.t_load_s:.1f}} s + test {{s.plc_loop.t_test_ok_s:.2f}} s + unload 1.0 s = {{s.week.pullret.station_time_ok_s:.2f}} s of a {{s.line_assumptions.takt_s:.0f}} s takt.
 
