@@ -2,7 +2,7 @@
 
 End-of-line force-travel test of a painted exterior car door-handle unit: which evaluation windows separate assembly defects from good handles, what the rig must be able to measure, and what the test costs a three-shift line.
 
-> **Simulated study, no hardware.** The handle, the test rig, the defects, the line and every "measurement" here are models. All part values and their spreads are illustrative. That handle lines run a force-travel test at the end of the line is an assumption of this study, not a published fact about any plant. The regulation and standards content comes from the public sources in [docs/SOURCES.md](docs/SOURCES.md); what was not read is listed there. The PLC code compiles in TIA Portal V18 with 0 errors (record in `results/tia_compile.txt`); in the tests it runs through a translator in Python, and it was not run on a PLC.
+> **Simulated study, no hardware.** The handle, the test rig, the defects, the line and every "measurement" here are models. All part values and their spreads are illustrative. That handle lines run a force-travel test at the end of the line is an assumption of this study, not a published fact about any plant. The regulation and standards content comes from the public sources in [docs/SOURCES.md](docs/SOURCES.md); what was not read is listed there. The PLC code compiles in TIA Portal V18 with 0 errors and 0 warnings (record in `results/tia_compile.txt`); in the tests it runs through a translator in Python, and it was not run on a PLC.
 
 ## The question
 
@@ -71,7 +71,7 @@ python scripts/make_docs.py      # README.md and DOSSIER.md from docs/templates 
 - Quasi-static model: no handle inertia, no stick-slip, no temperature, no paint damage. Drive dynamics are an acceleration limit only; the force at the stop depends on it.
 - Defect rates, micro-stops, breakdowns and operator times of the line are assumed.
 - UN R11 was read in the text of the 03 series of amendments; later revisions could not be opened. SAE J839, ISO 22400-2, the AIAG MSA manual and VDA Volume 5 were not read; public secondary sources were used and are named.
-- The SCL compiles in TIA Portal V18 for an S7-1513 with 0 errors and 53 warnings (`scripts/tia_build.ps1`, record in `results/tia_compile.txt`). The warnings are all of the kind "output parameter might not be initialized", because the block reads back its own outputs. It was not run on a PLC or in PLCSIM. The translator supports only the subset used here.
+- The SCL compiles in TIA Portal V18 for an S7-1513 with 0 errors and 0 warnings (`scripts/tia_build.ps1`, record in `results/tia_compile.txt`). It was not run on a PLC or in PLCSIM. The translator supports only the subset used here.
 - No real force-travel curve was available for comparison.
 
 ## Repo map
@@ -87,7 +87,7 @@ python scripts/make_docs.py      # README.md and DOSSIER.md from docs/templates 
 | `handletest/line.py` | One week on the line, OEE terms |
 | `handletest/study.py`, `handletest/plots.py` | The whole study and the figures |
 | `plc/` | The two SCL blocks |
-| `tests/` | 26 tests: regulation example, closed forms, SCL against NumPy, station sequence, line model |
+| `tests/` | 28 tests: regulation example, closed forms, SCL against NumPy, station sequence, line model |
 | `results/summary.json` | All numbers |
 | `DOSSIER.md`, `docs/SOURCES.md` | Systems-engineering dossier; sources with what was taken from each |
 

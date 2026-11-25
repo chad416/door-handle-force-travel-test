@@ -5,6 +5,7 @@ AUTHOR : chad416
 VERSION : 0.1
 //  Called in the cyclic interrupt that samples the load cell and the axis position.
 //  Nothing is stored as a curve: every evaluation element is updated with the new sample.
+//  The block works on static variables and writes its outputs once, at the end of every call.
 //  Elements (DOSSIER section 6.3):
 //    gate 1 (GateX)    pull force FpG1 and return force FrG1 at the same travel;
 //                      FMean = (FpG1 + FrG1) / 2 is the spring, FHyst = FpG1 - FrG1 is twice the friction
@@ -83,6 +84,21 @@ VERSION : 0.1
       sGotPeak : Bool;
       sGotStop : Bool;
       sFMin : Real;
+      sFpG1 : Real;
+      sFrG1 : Real;
+      sFMean : Real;
+      sFHyst : Real;
+      sFpG2 : Real;
+      sFPeak : Real;
+      sXPeak : Real;
+      sFStep : Real;
+      sXStop : Real;
+      sEnvViol : Int;
+      sEnvNodes : Int;
+      sNSamples : Int;
+      sDone : Bool;
+      sOk : Bool;
+      sNokCode : Int;
    END_VAR
 
    VAR_TEMP
@@ -95,21 +111,21 @@ VERSION : 0.1
 BEGIN
 	REGION Reset
 	    IF #Reset THEN
-	        #FpG1 := 0.0;
-	        #FrG1 := 0.0;
-	        #FMean := 0.0;
-	        #FHyst := 0.0;
-	        #FpG2 := 0.0;
-	        #FPeak := 0.0;
-	        #XPeak := 0.0;
-	        #FStep := 0.0;
-	        #XStop := 0.0;
-	        #EnvViol := 0;
-	        #EnvNodes := 0;
-	        #NSamples := 0;
-	        #Done := FALSE;
-	        #Ok := FALSE;
-	        #NokCode := 0;
+	        #sFpG1 := 0.0;
+	        #sFrG1 := 0.0;
+	        #sFMean := 0.0;
+	        #sFHyst := 0.0;
+	        #sFpG2 := 0.0;
+	        #sFPeak := 0.0;
+	        #sXPeak := 0.0;
+	        #sFStep := 0.0;
+	        #sXStop := 0.0;
+	        #sEnvViol := 0;
+	        #sEnvNodes := 0;
+	        #sNSamples := 0;
+	        #sDone := FALSE;
+	        #sOk := FALSE;
+	        #sNokCode := 0;
 	        #sHavePrev := FALSE;
 	        #sGotG1 := FALSE;
 	        #sGotG2 := FALSE;
@@ -117,85 +133,84 @@ BEGIN
 	        #sGotPeak := FALSE;
 	        #sGotStop := FALSE;
 	        #sFMin := 0.0;
-	        RETURN;
 	    END_IF;
 	END_REGION
 
 	REGION PullStroke
-	    IF #Sample AND NOT #Done AND #Stroke = 1 THEN
+	    IF NOT #Reset AND #Sample AND NOT #sDone AND #Stroke = 1 THEN
 	        IF #sHavePrev AND #sPrevStroke = 1 THEN
 	            // gates: force at a set travel, linear between the two samples around it
 	            IF NOT #sGotG1 AND #sPrevX < #GateX AND #X >= #GateX THEN
-	                #FpG1 := #sPrevF + (#F - #sPrevF) * (#GateX - #sPrevX) / (#X - #sPrevX);
+	                #sFpG1 := #sPrevF + (#F - #sPrevF) * (#GateX - #sPrevX) / (#X - #sPrevX);
 	                #sGotG1 := TRUE;
 	            END_IF;
 	            IF NOT #sGotG2 AND #sPrevX < #Gate2X AND #X >= #Gate2X THEN
-	                #FpG2 := #sPrevF + (#F - #sPrevF) * (#Gate2X - #sPrevX) / (#X - #sPrevX);
+	                #sFpG2 := #sPrevF + (#F - #sPrevF) * (#Gate2X - #sPrevX) / (#X - #sPrevX);
 	                #sGotG2 := TRUE;
 	            END_IF;
 	            // end stop: travel at a set force
 	            IF NOT #sGotStop AND #sPrevX > #Gate2X AND #sPrevF < #StopF AND #F >= #StopF THEN
-	                #XStop := #sPrevX + (#X - #sPrevX) * (#StopF - #sPrevF) / (#F - #sPrevF);
+	                #sXStop := #sPrevX + (#X - #sPrevX) * (#StopF - #sPrevF) / (#F - #sPrevF);
 	                #sGotStop := TRUE;
 	            END_IF;
 	            // envelope: at most four nodes can lie between two samples
 	            FOR #tI := 1 TO 4 DO
-	                #tNodeX := #EnvX0 + #EnvDx * INT_TO_REAL(#EnvNodes);
-	                IF #EnvNodes < #EnvN AND #sPrevX < #tNodeX AND #X >= #tNodeX THEN
+	                #tNodeX := #EnvX0 + #EnvDx * INT_TO_REAL(#sEnvNodes);
+	                IF #sEnvNodes < #EnvN AND #sPrevX < #tNodeX AND #X >= #tNodeX THEN
 	                    #tFn := #sPrevF + (#F - #sPrevF) * (#tNodeX - #sPrevX) / (#X - #sPrevX);
-	                    IF #tFn < #EnvLo[#EnvNodes] OR #tFn > #EnvHi[#EnvNodes] THEN
-	                        #EnvViol := #EnvViol + 1;
+	                    IF #tFn < #EnvLo[#sEnvNodes] OR #tFn > #EnvHi[#sEnvNodes] THEN
+	                        #sEnvViol := #sEnvViol + 1;
 	                    END_IF;
-	                    #EnvNodes := #EnvNodes + 1;
+	                    #sEnvNodes := #sEnvNodes + 1;
 	                END_IF;
 	            END_FOR;
 	        END_IF;
 	        // latch release: peak inside the window, then the drop after it
-	        IF #X >= #PeakXLo AND #X <= #PeakXHi AND (NOT #sGotPeak OR #F > #FPeak) THEN
-	            #FPeak := #F;
-	            #XPeak := #X;
+	        IF #X >= #PeakXLo AND #X <= #PeakXHi AND (NOT #sGotPeak OR #F > #sFPeak) THEN
+	            #sFPeak := #F;
+	            #sXPeak := #X;
 	            #sFMin := #F;
 	            #sGotPeak := TRUE;
-	        ELSIF #sGotPeak AND #X <= #XPeak + #StepSpan AND #F < #sFMin THEN
+	        ELSIF #sGotPeak AND #X <= #sXPeak + #StepSpan AND #F < #sFMin THEN
 	            #sFMin := #F;
 	        END_IF;
 	        IF #sGotPeak THEN
-	            #FStep := #FPeak - #sFMin;
+	            #sFStep := #sFPeak - #sFMin;
 	        END_IF;
 	    END_IF;
 	END_REGION
 
 	REGION ReturnStroke
-	    IF #Sample AND NOT #Done AND #Stroke = 2 AND #sHavePrev THEN
+	    IF NOT #Reset AND #Sample AND NOT #sDone AND #Stroke = 2 AND #sHavePrev THEN
 	        IF NOT #sGotR1 AND #sPrevX > #GateX AND #X <= #GateX THEN
-	            #FrG1 := #sPrevF + (#F - #sPrevF) * (#GateX - #sPrevX) / (#X - #sPrevX);
+	            #sFrG1 := #sPrevF + (#F - #sPrevF) * (#GateX - #sPrevX) / (#X - #sPrevX);
 	            #sGotR1 := TRUE;
 	        END_IF;
 	    END_IF;
 	END_REGION
 
 	REGION Bookkeeping
-	    IF #Sample AND NOT #Done THEN
+	    IF NOT #Reset AND #Sample AND NOT #sDone THEN
 	        #sPrevX := #X;
 	        #sPrevF := #F;
 	        #sPrevStroke := #Stroke;
 	        #sHavePrev := TRUE;
-	        IF #NSamples < 32000 THEN
-	            #NSamples := #NSamples + 1;
+	        IF #sNSamples < 32000 THEN
+	            #sNSamples := #sNSamples + 1;
 	        END_IF;
 	    END_IF;
 	END_REGION
 
 	REGION Verdict
-	    IF #Finish AND NOT #Done THEN
-	        #FMean := (#FpG1 + #FrG1) * 0.5;
-	        #FHyst := #FpG1 - #FrG1;
+	    IF NOT #Reset AND #Finish AND NOT #sDone THEN
+	        #sFMean := (#sFpG1 + #sFrG1) * 0.5;
+	        #sFHyst := #sFpG1 - #sFrG1;
 	        #tCode := 0;
 	        CASE #Mode OF
 	            1:  // peak force only
 	                IF NOT #sGotPeak THEN
 	                    #tCode := 1;
-	                ELSIF #FPeak < #PeakFLo OR #FPeak > #PeakFHi THEN
+	                ELSIF #sFPeak < #PeakFLo OR #sFPeak > #PeakFHi THEN
 	                    #tCode := 6;
 	                END_IF;
 	            2, 3:  // windows; mode 3 judges gate 1 with the return stroke
@@ -203,37 +218,56 @@ BEGIN
 	                    #tCode := 1;
 	                ELSIF #Mode = 3 AND NOT #sGotR1 THEN
 	                    #tCode := 1;
-	                ELSIF #Mode = 2 AND (#FpG1 < #G1Lo OR #FpG1 > #G1Hi) THEN
+	                ELSIF #Mode = 2 AND (#sFpG1 < #G1Lo OR #sFpG1 > #G1Hi) THEN
 	                    #tCode := 2;
-	                ELSIF #Mode = 3 AND (#FMean < #MeanLo OR #FMean > #MeanHi) THEN
+	                ELSIF #Mode = 3 AND (#sFMean < #MeanLo OR #sFMean > #MeanHi) THEN
 	                    #tCode := 2;
-	                ELSIF #Mode = 3 AND (#FHyst < #HystLo OR #FHyst > #HystHi) THEN
+	                ELSIF #Mode = 3 AND (#sFHyst < #HystLo OR #sFHyst > #HystHi) THEN
 	                    #tCode := 3;
-	                ELSIF #Mode = 3 AND #FrG1 < #RetFMin THEN
+	                ELSIF #Mode = 3 AND #sFrG1 < #RetFMin THEN
 	                    #tCode := 4;
-	                ELSIF #FpG2 < #G2Lo OR #FpG2 > #G2Hi THEN
+	                ELSIF #sFpG2 < #G2Lo OR #sFpG2 > #G2Hi THEN
 	                    #tCode := 5;
-	                ELSIF #FPeak < #PeakFLo OR #FPeak > #PeakFHi THEN
+	                ELSIF #sFPeak < #PeakFLo OR #sFPeak > #PeakFHi THEN
 	                    #tCode := 6;
-	                ELSIF #XPeak < #PeakXMin OR #XPeak > #PeakXMax THEN
+	                ELSIF #sXPeak < #PeakXMin OR #sXPeak > #PeakXMax THEN
 	                    #tCode := 7;
-	                ELSIF #FStep < #StepLo THEN
+	                ELSIF #sFStep < #StepLo THEN
 	                    #tCode := 8;
-	                ELSIF #XStop < #StopXLo OR #XStop > #StopXHi THEN
+	                ELSIF #sXStop < #StopXLo OR #sXStop > #StopXHi THEN
 	                    #tCode := 9;
 	                END_IF;
 	            4:  // envelope: every node reached and inside
-	                IF #EnvNodes < #EnvN THEN
+	                IF #sEnvNodes < #EnvN THEN
 	                    #tCode := 1;
-	                ELSIF #EnvViol > 0 THEN
+	                ELSIF #sEnvViol > 0 THEN
 	                    #tCode := 10;
 	                END_IF;
 	            ELSE
 	                #tCode := 1;
 	        END_CASE;
-	        #NokCode := #tCode;
-	        #Ok := #tCode = 0;
-	        #Done := TRUE;
+	        #sNokCode := #tCode;
+	        #sOk := #tCode = 0;
+	        #sDone := TRUE;
 	    END_IF;
+	END_REGION
+
+	REGION Outputs
+	    // the working values live in static variables; the outputs are written here and nowhere else
+	    #FpG1 := #sFpG1;
+	    #FrG1 := #sFrG1;
+	    #FMean := #sFMean;
+	    #FHyst := #sFHyst;
+	    #FpG2 := #sFpG2;
+	    #FPeak := #sFPeak;
+	    #XPeak := #sXPeak;
+	    #FStep := #sFStep;
+	    #XStop := #sXStop;
+	    #EnvViol := #sEnvViol;
+	    #EnvNodes := #sEnvNodes;
+	    #NSamples := #sNSamples;
+	    #Done := #sDone;
+	    #Ok := #sOk;
+	    #NokCode := #sNokCode;
 	END_REGION
 END_FUNCTION_BLOCK

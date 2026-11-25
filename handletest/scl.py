@@ -9,7 +9,8 @@ into a Python class and runs it with S7 data types:
 * Bool, Array[lo..hi] of <elementary>, multi-instances of other FBs
 
 Supported statements: assignment, IF/ELSIF/ELSE, CASE ... OF (integer labels and lists),
-FOR ... TO ... [BY] ... DO, REGION, RETURN, FB multi-instance calls.  VAR CONSTANT is read-only.  Expressions: arithmetic, comparison,
+FOR ... TO ... [BY] ... DO, REGION, RETURN, FB multi-instance calls, whole-array copy
+(#a := #b; same element type and bounds).  VAR CONSTANT is read-only.  Expressions: arithmetic, comparison,
 AND/OR/XOR/NOT, MOD, array index, member access, and the functions LIMIT, MIN,
 MAX, ABS, SQRT, EXP, LN, INT_TO_REAL, DINT_TO_REAL, REAL_TO_DINT, INT_TO_DINT.
 
@@ -22,7 +23,7 @@ Operation counting (for the PLC cycle-time budget, dossier section 7):
 `OPS` holds the counts; reset it with `reset_ops()`.
 
 Origin: copied from the author's extruder-pressure-fill-estimator project (same author, MIT),
-then extended with CASE and VAR CONSTANT.
+then extended with CASE, VAR CONSTANT and the whole-array copy.
 
 Anything else raises SclError, so an unsupported construct can never be
 silently ignored.  The authority for the real PLC is the TIA Portal compiler;
@@ -511,6 +512,17 @@ class Parser:
                 self.expect("]")
                 target, typ = f"self.{d.name}[_ix({idx}, {d.lo}, {d.hi})]", d.elem
             else:
+                if d.type == "ARRAY" and self.peek().text == ":=" and self.peek(1).kind == "local"                         and self.peek(2).text == ";":
+                    # whole-array copy between two arrays of the same element type and bounds
+                    self.next()
+                    src = self.vars.get(self.next().text)
+                    self.expect(";")
+                    if d.section in ("VAR_INPUT", "VAR CONSTANT"):
+                        raise SclError(f"line {tok.line}: writing #{d.name} ({d.section}) is not allowed here")
+                    if src is None or (src.type, src.elem, src.lo, src.hi) != (d.type, d.elem, d.lo, d.hi):
+                        raise SclError(f"line {tok.line}: array copy needs two arrays of the same type and bounds")
+                    self.emit(depth, f"self.{d.name} = _mov(list(self.{src.name}))")
+                    return
                 if d.type == "ARRAY" or d.type.startswith("FB:"):
                     raise SclError(f"line {tok.line}: whole-array/instance assignment not supported")
                 if d.section in ("VAR_INPUT", "VAR CONSTANT"):

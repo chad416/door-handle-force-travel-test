@@ -90,6 +90,14 @@ VERSION : 0.1
       sChutePrev : Bool;
       sInTest : Bool;
       sWasLocked : Bool;
+      sState : Int;
+      sRigCheckRequired : Bool;
+      sCntTotal : DInt;
+      sCntOk : DInt;
+      sCntNok : DInt;
+      sCntRejectConfirmed : DInt;
+      sCntConsecNok : Int;
+      sCntByCode : Array[0..31] of DInt;
    END_VAR
 
    VAR_TEMP
@@ -111,61 +119,61 @@ BEGIN
 	END_REGION
 
 	REGION Faults
-	    IF #State <> 9 AND (NOT #SafetyOk OR NOT #DriveOk) THEN
+	    IF #sState <> 9 AND (NOT #SafetyOk OR NOT #DriveOk) THEN
 	        IF NOT #SafetyOk THEN
 	            #FaultCode := 1;
 	        ELSE
 	            #FaultCode := 2;
 	        END_IF;
-	        IF #State <> 10 THEN
-	            #sInTest := #State >= 1 AND #State <= 6;
-	            #sWasLocked := #State = 8;
+	        IF #sState <> 10 THEN
+	            #sInTest := #sState >= 1 AND #sState <= 6;
+	            #sWasLocked := #sState = 8;
 	        END_IF;
-	        #State := 9;
+	        #sState := 9;
 	    END_IF;
 	END_REGION
 
 	REGION Sequence
-	    CASE #State OF
+	    CASE #sState OF
 	        0:  // Idle
 	            #Locked := FALSE;
 	            IF NOT #PartPresent THEN
 	                #sT := 0.0;
 	                #QLampOk := FALSE;
 	                #QLampNok := FALSE;
-	            ELSIF #sT >= #TPresent AND #StartEnable AND #ClampOpen AND NOT #RigCheckRequired THEN
+	            ELSIF #sT >= #TPresent AND #StartEnable AND #ClampOpen AND NOT #sRigCheckRequired THEN
 	                #Verdict := 0;
 	                #NokCode := 0;
 	                #sPreNok := 0;
 	                #sTCycle := 0.0;
 	                #sT := 0.0;
 	                IF #tVariantOk THEN
-	                    #State := 1;
+	                    #sState := 1;
 	                ELSE
 	                    #sPreNok := 20;   // never pull a part of the wrong hand
-	                    #State := 6;
+	                    #sState := 6;
 	                END_IF;
 	            END_IF;
 	        1:  // Clamp
 	            #QClamp := TRUE;
 	            IF #ClampClosed THEN
 	                #sT := 0.0;
-	                #State := 2;
+	                #sState := 2;
 	            ELSIF #sT > #TClampMax THEN
 	                #FaultCode := 3;
 	                #sInTest := TRUE;
-	                #State := 9;
+	                #sState := 9;
 	            END_IF;
 	        2:  // Tare
 	            IF #sT >= 0.05 THEN
 	                IF ABS(#Force) > #TareTol THEN
 	                    #FaultCode := 4;
 	                    #sInTest := TRUE;
-	                    #State := 9;
+	                    #sState := 9;
 	                ELSE
 	                    #sTare := #Force;
 	                    #Eval(Reset := TRUE, Sample := FALSE, Stroke := 0, X := 0.0, F := 0.0, Finish := FALSE);
-	                    #State := 3;
+	                    #sState := 3;
 	                END_IF;
 	            END_IF;
 	        3:  // Approach
@@ -175,17 +183,17 @@ BEGIN
 	                #sFTouch := #FNet;
 	                IF #Pos < #TouchLo OR #Pos > #TouchHi THEN
 	                    #sPreNok := 21;
-	                    #State := 5;
+	                    #sState := 5;
 	                ELSE
 	                    #XTravel := 0.0;
 	                    #Eval(Reset := FALSE, Sample := TRUE, Stroke := 1, X := 0.0, F := #FNet, Finish := FALSE);
-	                    #State := 4;
+	                    #sState := 4;
 	                END_IF;
 	            ELSIF #Pos > #TouchHi THEN
 	                #sPreNok := 21;
 	                #sTouchPos := #Pos;
 	                #sFTouch := 0.0;
-	                #State := 5;
+	                #sState := 5;
 	            END_IF;
 	        4:  // Pull
 	            #QVel := #VPull;
@@ -193,12 +201,12 @@ BEGIN
 	            #Eval(Reset := FALSE, Sample := TRUE, Stroke := 1, X := #XTravel, F := #FNet, Finish := FALSE);
 	            IF #FNet >= #FAbsMax THEN
 	                #sPreNok := 22;
-	                #State := 5;
+	                #sState := 5;
 	            ELSIF #FNet >= #FRev THEN
-	                #State := 5;
+	                #sState := 5;
 	            ELSIF #XTravel >= #XMax THEN
 	                #sPreNok := 23;
-	                #State := 5;
+	                #sState := 5;
 	            END_IF;
 	        5:  // Return
 	            #XTravel := #Pos - #sTouchPos - (#FNet - #sFTouch) * #Compliance;
@@ -210,7 +218,7 @@ BEGIN
 	            ELSIF #Pos > 0.05 THEN
 	                #QVel := -#VHome;
 	            ELSE
-	                #State := 6;
+	                #sState := 6;
 	            END_IF;
 	        6:  // Evaluate
 	            IF #sPreNok <> 0 THEN
@@ -221,29 +229,29 @@ BEGIN
 	            END_IF;
 	            #NokCode := #tCode;
 	            #TCycle := #sTCycle;
-	            #CntTotal := #CntTotal + 1;
-	            #CntByCode[#tCode] := #CntByCode[#tCode] + 1;
+	            #sCntTotal := #sCntTotal + 1;
+	            #sCntByCode[#tCode] := #sCntByCode[#tCode] + 1;
 	            #QClamp := FALSE;
 	            #sT := 0.0;
 	            IF #tCode = 0 THEN
 	                #Verdict := 1;
-	                #CntOk := #CntOk + 1;
-	                #CntConsecNok := 0;
+	                #sCntOk := #sCntOk + 1;
+	                #sCntConsecNok := 0;
 	                #QLampOk := TRUE;
-	                #State := 7;
+	                #sState := 7;
 	            ELSE
 	                #Verdict := 2;
-	                #CntNok := #CntNok + 1;
-	                #CntConsecNok := #CntConsecNok + 1;
+	                #sCntNok := #sCntNok + 1;
+	                #sCntConsecNok := #sCntConsecNok + 1;
 	                #QLampNok := TRUE;
 	                #sPartGone := FALSE;
-	                #State := 8;
+	                #sState := 8;
 	            END_IF;
 	        7:  // UnloadOk
 	            #QClamp := FALSE;
 	            IF NOT #PartPresent AND #ClampOpen THEN
 	                #sT := 0.0;
-	                #State := 0;
+	                #sState := 0;
 	            END_IF;
 	        8:  // RejectLock
 	            #QClamp := FALSE;
@@ -251,14 +259,14 @@ BEGIN
 	            IF NOT #PartPresent THEN
 	                #sPartGone := TRUE;
 	            END_IF;
-	            #QCallOperator := #sT > #TRejectWarn OR #RigCheckRequired;
+	            #QCallOperator := #sT > #TRejectWarn OR #sRigCheckRequired;
 	            IF #sPartGone AND #tChuteEdge THEN
-	                #CntRejectConfirmed := #CntRejectConfirmed + 1;
-	                #RigCheckRequired := #CntConsecNok >= #MaxConsecNok;
-	                #QCallOperator := #RigCheckRequired;
+	                #sCntRejectConfirmed := #sCntRejectConfirmed + 1;
+	                #sRigCheckRequired := #sCntConsecNok >= #MaxConsecNok;
+	                #QCallOperator := #sRigCheckRequired;
 	                #Locked := FALSE;
 	                #sT := 0.0;
-	                #State := 0;
+	                #sState := 0;
 	            END_IF;
 	        9:  // Fault
 	            #QClamp := #sInTest;
@@ -266,7 +274,7 @@ BEGIN
 	            IF #AckFault AND #SafetyOk AND #DriveOk THEN
 	                #FaultCode := 0;
 	                #QCallOperator := FALSE;
-	                #State := 10;
+	                #sState := 10;
 	            END_IF;
 	        10:  // Home
 	            IF #Pos > 0.05 THEN
@@ -274,25 +282,37 @@ BEGIN
 	            ELSIF #sInTest THEN
 	                #sInTest := FALSE;
 	                #sPreNok := 24;
-	                #State := 6;
+	                #sState := 6;
 	            ELSIF #sWasLocked THEN
 	                #sWasLocked := FALSE;   // a fault does not release the reject lock
-	                #State := 8;
+	                #sState := 8;
 	            ELSE
-	                #State := 0;
+	                #sState := 0;
 	            END_IF;
 	        ELSE
-	            #State := 9;
+	            #sState := 9;
 	    END_CASE;
 	END_REGION
 
 	REGION RigCheck
 	    // the lock after too many rejects in a row is released by the acknowledge key
-	    IF #RigCheckRequired AND #AckFault AND #State = 0 THEN
-	        #RigCheckRequired := FALSE;
-	        #CntConsecNok := 0;
+	    IF #sRigCheckRequired AND #AckFault AND #sState = 0 THEN
+	        #sRigCheckRequired := FALSE;
+	        #sCntConsecNok := 0;
 	        #QCallOperator := FALSE;
 	    END_IF;
-	    #QDriveEnable := #SafetyOk AND #DriveOk AND #State <> 9;
+	    #QDriveEnable := #SafetyOk AND #DriveOk AND #sState <> 9;
+	END_REGION
+
+	REGION Outputs
+	    // state and counters live in static variables; these outputs are written here and nowhere else
+	    #State := #sState;
+	    #RigCheckRequired := #sRigCheckRequired;
+	    #CntTotal := #sCntTotal;
+	    #CntOk := #sCntOk;
+	    #CntNok := #sCntNok;
+	    #CntRejectConfirmed := #sCntRejectConfirmed;
+	    #CntConsecNok := #sCntConsecNok;
+	    #CntByCode := #sCntByCode;
 	END_REGION
 END_FUNCTION_BLOCK

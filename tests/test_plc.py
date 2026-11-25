@@ -170,3 +170,26 @@ def test_three_rejects_in_a_row_ask_for_the_master_part(methods):
     st.AckFault = False
     r = stn.run_cycle(st, pl)
     assert r["verdict"] == 1 and int(st.CntConsecNok) == 0
+
+
+def test_curve_eval_writes_its_outputs_on_every_call_also_on_reset(methods):
+    rng = np.random.default_rng(21)
+    c = measure(mech.nominal(), RIG, rng)
+    fb = stn.blocks()["FB_CurveEval"]()
+    stn.load_recipe(fb, 3, methods.lim[3], methods.env)
+    fb.Sample, fb.Stroke = True, 1
+    for j in range(int(c["n"][0])):
+        fb.X, fb.F = stn.f32(c["Xp"][0, j]), stn.f32(c["Fp"][0, j])
+        fb()
+    assert float(fb.FPeak) > 10 and int(fb.NSamples) == int(c["n"][0])     # outputs follow during the stroke
+    fb.Reset = True                                                        # reset and sample in the same call
+    fb()
+    assert float(fb.FPeak) == 0.0 and int(fb.NSamples) == 0 and not bool(fb.Done) and int(fb.EnvNodes) == 0
+
+
+def test_station_counter_outputs_are_copies_of_the_static_values(methods):
+    rng = np.random.default_rng(22)
+    st, pl, r = _cycle(methods, mech.apply_defect(mech.nominal(), "latch_lever_unhooked", rng), rng)
+    assert int(st.CntByCode[5]) == 1 and int(st.sCntByCode[5]) == 1 and int(st.CntNok) == int(st.sCntNok) == 1
+    assert st.CntByCode is not st.sCntByCode                               # array output is a copy, not an alias
+    assert int(st.State) == int(st.sState) == 0

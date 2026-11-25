@@ -217,7 +217,7 @@ Assumed: all masses, spring data, friction, latch load, tolerances and their dis
 | R-07 | Speed table | 54 N at 50 mm/s: met with little margin |
 | R-08 | Section 5.4 | 4.24 s of 12 s |
 
-Validation against a real handle and a real rig has not been done. First steps with hardware: measure friction and spring torque of 50 units, run the Type-1 study on the real rig, load the SCL (it compiles in TIA Portal V18 with 0 errors) on a CPU and check the cycle load of the 2 ms interrupt.
+Validation against a real handle and a real rig has not been done. First steps with hardware: measure friction and spring torque of 50 units, run the Type-1 study on the real rig, load the SCL (it compiles in TIA Portal V18 with 0 errors and 0 warnings) on a CPU and check the cycle load of the 2 ms interrupt.
 
 ## 11. Limits of this work
 
