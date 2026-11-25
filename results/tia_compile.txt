@@ -1,0 +1,66 @@
+﻿TIA Portal V18, CPU OrderNumber:6ES7 513-1AL02-0AB0/V2.9, 2026-11-25 03:32
+generated FB_CurveEval
+generated FB_HandleStation
+COMPILE Warning  errors=0  warnings=53
+  Warning  PLC_1  
+    Warning  Program blocks  
+      Warning  FB_HandleStation (FB2)  
+        Warning  13  The parameter '#State' might not be initialized.
+        Warning  19  The parameter '#State' might not be initialized.
+        Warning  20  The parameter '#State' might not be initialized.
+        Warning  20  The parameter '#State' might not be initialized.
+        Warning  21  The parameter '#State' might not be initialized.
+        Warning  28  The parameter '#State' might not be initialized.
+        Warning  35  The parameter '#RigCheckRequired' might not be initialized.
+        Warning  148  The parameter '#CntTotal' might not be initialized.
+        Warning  149  The parameter '#CntByCode' might not be initialized.
+        Warning  154  The parameter '#CntOk' might not be initialized.
+        Warning  160  The parameter '#CntNok' might not be initialized.
+        Warning  161  The parameter '#CntConsecNok' might not be initialized.
+        Warning  178  The parameter '#RigCheckRequired' might not be initialized.
+        Warning  180  The parameter '#CntRejectConfirmed' might not be initialized.
+        Warning  181  The parameter '#CntConsecNok' might not be initialized.
+        Warning  215  The parameter '#RigCheckRequired' might not be initialized.
+        Warning  215  The parameter '#State' might not be initialized.
+        Warning  220  The parameter '#State' might not be initialized.
+        Success    Block was successfully compiled.
+      Warning  FB_CurveEval (FB1)  
+        Warning  30  The parameter '#Done' might not be initialized.
+        Warning  48  The parameter '#EnvNodes' might not be initialized.
+        Warning  49  The parameter '#EnvNodes' might not be initialized.
+        Warning  51  The parameter '#EnvNodes' might not be initialized.
+        Warning  51  The parameter '#EnvNodes' might not be initialized.
+        Warning  52  The parameter '#EnvViol' might not be initialized.
+        Warning  54  The parameter '#EnvNodes' might not be initialized.
+        Warning  59  The parameter '#FPeak' might not be initialized.
+        Warning  64  The parameter '#XPeak' might not be initialized.
+        Warning  68  The parameter '#FPeak' might not be initialized.
+        Warning  74  The parameter '#Done' might not be initialized.
+        Warning  83  The parameter '#Done' might not be initialized.
+        Warning  88  The parameter '#NSamples' might not be initialized.
+        Warning  89  The parameter '#NSamples' might not be initialized.
+        Warning  95  The parameter '#Done' might not be initialized.
+        Warning  96  The parameter '#FpG1' might not be initialized.
+        Warning  96  The parameter '#FrG1' might not be initialized.
+        Warning  97  The parameter '#FpG1' might not be initialized.
+        Warning  97  The parameter '#FrG1' might not be initialized.
+        Warning  103  The parameter '#FPeak' might not be initialized.
+        Warning  103  The parameter '#FPeak' might not be initialized.
+        Warning  111  The parameter '#FpG1' might not be initialized.
+        Warning  111  The parameter '#FpG1' might not be initialized.
+        Warning  117  The parameter '#FrG1' might not be initialized.
+        Warning  119  The parameter '#FpG2' might not be initialized.
+        Warning  119  The parameter '#FpG2' might not be initialized.
+        Warning  121  The parameter '#FPeak' might not be initialized.
+        Warning  121  The parameter '#FPeak' might not be initialized.
+        Warning  123  The parameter '#XPeak' might not be initialized.
+        Warning  123  The parameter '#XPeak' might not be initialized.
+        Warning  125  The parameter '#FStep' might not be initialized.
+        Warning  127  The parameter '#XStop' might not be initialized.
+        Warning  127  The parameter '#XStop' might not be initialized.
+        Warning  131  The parameter '#EnvNodes' might not be initialized.
+        Warning  133  The parameter '#EnvViol' might not be initialized.
+        Success    Block was successfully compiled.
+      Success  Main (OB1)  Block was successfully compiled.
+  Warning    Compiling finished (errors: 0; warnings: 53)
+
